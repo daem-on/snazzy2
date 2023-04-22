@@ -9,13 +9,16 @@ enum ClientState {
 
 const isServerSide = typeof location === "undefined";
 let ws: WebSocket | undefined;
+let id: string | undefined;
 
 function connect(setState: StateUpdater<ClientState>) {
 	console.log("connecting");
+
 	const url = new URL(location.href);
 	url.protocol = url.protocol.replace("http", "ws");
 	url.pathname = "/api/websocket";
 
+	id = crypto.randomUUID();
 	ws = new WebSocket(url);
 	ws.onopen = () => {
 		console.log("connected");
@@ -24,15 +27,15 @@ function connect(setState: StateUpdater<ClientState>) {
 	ws.onmessage = (event) => {
 		console.log("message", event.data);
 	}
-	ws.onclose = () => {
-		console.log("disconnected");
+	ws.onclose = ev => {
+		console.log("disconnected", ev.code, ev.reason);
 		setState(ClientState.DISCONNECTED);
 		ws = undefined;
 	}
 }
 
 function send(message: string) {
-	if (ws !== undefined) ws.send(message);
+	if (ws !== undefined) ws.send(`${id}: ${message}`);
 }
 
 export default function WebsocketClient() {
