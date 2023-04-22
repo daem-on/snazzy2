@@ -37,7 +37,7 @@ function send(message: string) {
 
 export default function WebsocketClient() {
 	const [state, setState] = useState(ClientState.CONNECTING);
-	if (!isServerSide) connect(setState);
+	if (!isServerSide && state === ClientState.CONNECTING) connect(setState);
 	return (
 		<div class="flex gap-2 w-full">
 			<p class="flex-grow-1 font-bold text-xl">{ClientState[state]}</p>
