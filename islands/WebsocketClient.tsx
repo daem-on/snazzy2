@@ -11,6 +11,7 @@ const isServerSide = typeof location === "undefined";
 let ws: WebSocket | undefined;
 
 function connect(setState: StateUpdater<ClientState>) {
+	console.log("connecting");
 	const url = new URL(location.href);
 	url.protocol = url.protocol.replace("http", "ws");
 	url.pathname = "/api/websocket";

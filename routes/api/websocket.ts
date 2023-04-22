@@ -6,8 +6,16 @@ export const handler = (req: Request, _ctx: HandlerContext): Response => {
 	  return new Response("request isn't trying to upgrade to websocket.");
 	}
 	const { socket, response } = Deno.upgradeWebSocket(req);
+	const channel = new BroadcastChannel("websocket");
 	socket.onmessage = (event) => {
-		socket.send(event.data);
+		socket.send(`Received ${event.data}`);
+		channel.postMessage(event.data);
+	};
+	channel.onmessage = (event) => {
+		socket.send(`Received ${event.data}`);
+	};
+	socket.onclose = () => {
+		channel.close();
 	};
 	return response;
 }
