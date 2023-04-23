@@ -7,15 +7,22 @@ export const handler = (req: Request, _ctx: HandlerContext): Response => {
 	}
 	const { socket, response } = Deno.upgradeWebSocket(req);
 	const channel = new BroadcastChannel("websocket");
+	console.log("Opening broadcastchannel");
 	socket.onmessage = (event) => {
-		socket.send(`Received ${event.data}`);
 		channel.postMessage(event.data);
+		console.log(`Socket message: ${event.data}`)
 	};
 	channel.onmessage = (event) => {
-		socket.send(`Received ${event.data}`);
+		console.log(`Channel message: ${event.data}`)
+		if (socket.readyState === socket.OPEN)
+			socket.send(`Received ${event.data}`);
+		if (event.data === "ping")
+			channel.postMessage("pong");
 	};
-	socket.onclose = () => {
+	setTimeout(() => {
+		channel.postMessage("closing");
 		channel.close();
-	};
+		socket.close();
+	}, 10000);
 	return response;
 }

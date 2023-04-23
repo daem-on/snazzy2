@@ -42,7 +42,7 @@ export default function WebsocketClient() {
 		<div class="flex gap-2 w-full">
 			<p class="flex-grow-1 font-bold text-xl">{ClientState[state]}</p>
 			<input type="text" />
-			<Button onClick={() => send("hello")}>Send</Button>
+			<Button onClick={() => send("ping")}>Send</Button>
 		</div>
 	);
 }
