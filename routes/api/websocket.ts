@@ -1,13 +1,15 @@
 import { HandlerContext } from "https://deno.land/x/rutt@0.1.0/mod.ts";
 
+const id = crypto.randomUUID();
+
 export const handler = (req: Request, _ctx: HandlerContext): Response => {
 	const upgrade = req.headers.get("upgrade") || "";
 	if (upgrade.toLowerCase() != "websocket") {
-	  return new Response("request isn't trying to upgrade to websocket.");
+			return new Response("request isn't trying to upgrade to websocket.");
 	}
 	const { socket, response } = Deno.upgradeWebSocket(req);
 	const channel = new BroadcastChannel("websocket");
-	console.log("Opening broadcastchannel");
+	console.log(`Opening broadcastchannel ${id}`);
 	socket.onmessage = (event) => {
 		channel.postMessage(event.data);
 		console.log(`Socket message: ${event.data}`)
@@ -23,6 +25,7 @@ export const handler = (req: Request, _ctx: HandlerContext): Response => {
 		channel.postMessage("closing");
 		channel.close();
 		socket.close();
-	}, 10000);
+		console.log(`Closing broadcastchannel ${id}`);
+	}, 100_000);
 	return response;
 }
