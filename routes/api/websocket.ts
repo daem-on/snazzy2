@@ -24,6 +24,7 @@ export const handler = (req: Request, _ctx: HandlerContext): Response => {
 		channel.postMessage(event.data);
 	};
 	channel.onmessage = (event) => {
+		console.log("channel message", event.data);
 		socket.send(`Received ${event.data}`);
 	};
 	socket.onclose = ev => {

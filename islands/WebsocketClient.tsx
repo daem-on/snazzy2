@@ -38,6 +38,10 @@ function send(message: string) {
 	if (ws !== undefined) ws.send(`${id}: ${message}`);
 }
 
+function send2() {
+	if (ws !== undefined) ws.send(new Uint8Array([1, 2, 3]));
+}
+
 export default function WebsocketClient() {
 	const [state, setState] = useState(ClientState.CONNECTING);
 	if (!isServerSide && state === ClientState.CONNECTING) connect(setState);
@@ -45,7 +49,7 @@ export default function WebsocketClient() {
 		<div class="flex gap-2 w-full">
 			<p class="flex-grow-1 font-bold text-xl">{ClientState[state]}</p>
 			<input type="text" />
-			<Button onClick={() => send("hello")}>Send</Button>
+			<Button onClick={() => send2()}>Send</Button>
 		</div>
 	);
 }
