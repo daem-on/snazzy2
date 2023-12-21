@@ -1,5 +1,3 @@
-import { GameState } from "./gameServer.ts";
-
 export type ServerMessage = {
 	type: "init";
 	token: string;
@@ -29,3 +27,34 @@ export type QueuedMessage = {
 	gameId: string;
 	ifNotChangedSince: number;
 }
+
+type Card = number;
+
+export enum PlayerStatus {
+	Waiting,
+	Responding,
+	Picking,
+	Finished,
+	Disconnected
+}
+
+type Player = {
+	username: string;
+	points: number;
+	status: PlayerStatus;
+	hand?: Card[];
+};
+
+export type GameState = {
+	players: Record<string, Player>;
+	roundNumber: number;
+	reveal: boolean;
+	deck: Card[];
+	call?: Card;
+	responses: Record<string, Card[]>;
+	revealOrder?: string[];
+	czarIndex?: number;
+	connected: string[];
+	host: string;
+	lastRoundStarted?: number;
+};

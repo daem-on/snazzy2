@@ -1,6 +1,7 @@
 import { HandlerContext } from "$fresh/server.ts";
-import { ClientMessage, ServerMessage } from "../../../dtos.ts";
-import { GameState, handleMessage, initState } from "../../../gameServer.ts";
+import { ClientMessage, GameState, ServerMessage } from "../../../dtos.ts";
+import { handleMessage, initState } from "../../../gameServer.ts";
+import { appShutdown } from "../../../main.ts";
 
 const db = await Deno.openKv();
 
@@ -52,7 +53,7 @@ export const handler = async (req: Request, ctx: HandlerContext): Promise<Respon
 
 	const stored = await db.get(key);
 	let gameState = stored.value as GameState;
-	if (!gameState) {
+	if (!gameState || gameState.connected.length === 0) {
 		gameState = initState(playerToken, 100);
 	} else {
 		gameState.connected.push(playerToken);
@@ -62,7 +63,7 @@ export const handler = async (req: Request, ctx: HandlerContext): Promise<Respon
 	const stream = db.watch([key]);
 	const reader = new AsyncReader(stream);
 	reader.start(state => {
-		console.log("update", state.value);
+		// console.log("update", state.value);
 		gameState = state.value as GameState;
 		sendMessage(socket, { type: "state", state: gameState });
 	});
@@ -74,16 +75,22 @@ export const handler = async (req: Request, ctx: HandlerContext): Promise<Respon
 			response => sendMessage(socket, response),
 			gameState,
 			playerToken,
-			state => db.set(key, state)
+			state => db.set(key, state),
+			gameId,
 		);
 	};
-	
-	socket.onclose = ev => {
-		console.log("socket closed", ev.code, ev.reason);
+
+	function cleanup() {
 		reader.cancel();
-		gameState.connected = gameState?.connected.filter(token => token != playerToken);
+		if (gameState)
+			gameState.connected = gameState?.connected.filter(token => token != playerToken);
+		sub.unsubscribe();
 		db.set(key, gameState);
-	};
+		socket.close();
+	}
+	
+	const sub = appShutdown.subscribe(cleanup);
+	socket.onclose = cleanup;
 	
 	return response;
 }

@@ -1,36 +1,5 @@
-import { ClientMessage, QueuedMessage, ServerMessage } from "./dtos.ts";
+import { ClientMessage, GameState, PlayerStatus, QueuedMessage, ServerMessage } from "./dtos.ts";
 import { enqueue } from "./queue.ts";
-
-type Card = number;
-
-enum PlayerStatus {
-	Waiting,
-	Responding,
-	Picking,
-	Finished,
-	Disconnected
-}
-
-type Player = {
-	username: string;
-	points: number;
-	status: PlayerStatus;
-	hand?: Card[];
-};
-
-export type GameState = {
-	players: Record<string, Player>;
-	roundNumber: number;
-	reveal: boolean;
-	deck: Card[];
-	call?: Card;
-	responses: Record<string, Card[]>;
-	revealOrder?: string[];
-	czarIndex?: number;
-	connected: string[];
-	host: string;
-	lastRoundStarted?: number;
-};
 
 const handSize = 7;
 const roundEndDelay = 5000;
@@ -59,10 +28,11 @@ function nextRound(gameState: GameState, updateState: (state: GameState) => void
 	const players = Object.keys(gameState.players);
 
 	gameState.roundNumber++;
+	console.log("starting round", gameState.roundNumber);
 	gameState.reveal = false;
 	gameState.call = Math.floor(Math.random() * 10);
 	gameState.responses = {};
-	gameState.czarIndex = (gameState.czarIndex ?? 0) + 1 % gameState.connected.length;
+	gameState.czarIndex = ((gameState.czarIndex ?? -1) + 1) % gameState.connected.length;
 	gameState.players[gameState.connected[gameState.czarIndex]].status = PlayerStatus.Picking;
 
 	for (const player of players) {
@@ -70,8 +40,11 @@ function nextRound(gameState: GameState, updateState: (state: GameState) => void
 			|| gameState.players[player].status === PlayerStatus.Picking) continue;
 		gameState.players[player].status = PlayerStatus.Responding;
 
-		const hand = gameState.players[player].hand;
-		if (hand && hand.length < handSize) {
+		let hand = gameState.players[player].hand;
+		if (!hand) {
+			hand = gameState.players[player].hand = [];
+		}
+		if (hand.length < handSize) {
 			const amount = handSize - hand.length;
 			hand.push(...gameState.deck.splice(0, amount));
 		}
@@ -99,10 +72,12 @@ export function handleMessage(
 	sendResponse: (response: ServerMessage) => void,
 	gameState: GameState,
 	playerToken: string,
-	updateState: (state: GameState) => void
+	updateState: (state: GameState) => void,
+	gameId: string,
 ) {
 	switch (message.type) {
 		case "join": {
+			if (gameState.players[playerToken]) return;
 			gameState.players[playerToken] = {
 				points: 0,
 				status: PlayerStatus.Waiting,
@@ -143,9 +118,10 @@ export function handleMessage(
 			gameState.players[playerToken].status = PlayerStatus.Finished;
 			updateState(gameState);
 			
+			console.log("enqueued next round")
 			enqueue({
 				type: "nextRound",
-				gameId: playerToken,
+				gameId,
 				ifNotChangedSince: Date.now()
 			}, roundEndDelay);
 			break;
