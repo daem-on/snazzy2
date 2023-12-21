@@ -1,6 +1,6 @@
 import { HandlerContext } from "$fresh/server.ts";
 import { ClientMessage, ServerMessage } from "../../../dtos.ts";
-import { GameState } from "../../../gameServer.ts";
+import { GameState, handleMessage, initState } from "../../../gameServer.ts";
 
 const db = await Deno.openKv();
 
@@ -53,16 +53,11 @@ export const handler = async (req: Request, ctx: HandlerContext): Promise<Respon
 	const stored = await db.get(key);
 	let gameState = stored.value as GameState;
 	if (!gameState) {
-		gameState = {
-			players: {},
-			roundNumber: 0,
-			reveal: false,
-			responses: {},
-			tokens: [],
-			host: ""
-		};
-		db.set(key, gameState);
+		gameState = initState(playerToken, 100);
+	} else {
+		gameState.connected.push(playerToken);
 	}
+	db.set(key, gameState);
 
 	const stream = db.watch([key]);
 	const reader = new AsyncReader(stream);
@@ -74,19 +69,20 @@ export const handler = async (req: Request, ctx: HandlerContext): Promise<Respon
 
 	socket.onmessage = event => {
 		const message = JSON.parse(event.data) as ClientMessage;
-		if (message.type === "join") {
-			gameState.players[playerToken] = {
-				points: 0,
-				status: "waiting",
-				username: message.username
-			};
-			db.set(key, gameState);
-		}
+		handleMessage(
+			message,
+			response => sendMessage(socket, response),
+			gameState,
+			playerToken,
+			state => db.set(key, state)
+		);
 	};
 	
 	socket.onclose = ev => {
 		console.log("socket closed", ev.code, ev.reason);
 		reader.cancel();
+		gameState.connected = gameState?.connected.filter(token => token != playerToken);
+		db.set(key, gameState);
 	};
 	
 	return response;

@@ -1,20 +1,31 @@
 import { GameState } from "./gameServer.ts";
 
-type InitMessage = {
+export type ServerMessage = {
 	type: "init";
 	token: string;
-}
-
-type StateMessage = {
+} | {
 	type: "state";
 	state: GameState;
-}
+} | {
+	type: "error";
+	message: string;
+};
 
-export type ServerMessage = InitMessage | StateMessage;
-
-type JoinMessage = {
+export type ClientMessage = {
 	type: "join";
 	username: string;
-}
+} | {
+	type: "start";
+} | {
+	type: "response";
+	response: number;
+} | {
+	type: "pick";
+	picked: string;
+};
 
-export type ClientMessage = JoinMessage;
+export type QueuedMessage = {
+	type: "nextRound";
+	gameId: string;
+	ifNotChangedSince: number;
+}
