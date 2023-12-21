@@ -1,55 +1,76 @@
-import { StateUpdater, useState } from "preact/hooks";
+import { signal } from "@preact/signals";
+import { useState } from "preact/hooks";
 import { Button } from "../components/Button.tsx";
+import { ClientMessage } from "../dtos.ts";
 
-enum ClientState {
+enum ConnectionStatus {
 	CONNECTING,
 	CONNECTED,
 	DISCONNECTED,
 }
 
+type ClientState = [ConnectionStatus, string];
+
 const isServerSide = typeof location === "undefined";
 let ws: WebSocket | undefined;
 let id: string | undefined;
 
-function connect(setState: StateUpdater<ClientState>) {
+const state = signal<ClientState>([ConnectionStatus.CONNECTING, "initial"]);
+
+function connect() {
 	console.log("connecting");
 
 	const url = new URL(location.href);
 	url.protocol = url.protocol.replace("http", "ws");
-	url.pathname = "/api/websocket";
+	url.pathname = `/api/games/2`;
 
 	id = crypto.randomUUID();
 	ws = new WebSocket(url);
 	ws.onopen = () => {
 		console.log("connected");
-		setState(ClientState.CONNECTED);
+		state.value[0] = ConnectionStatus.CONNECTED;
+
+
 	}
 	ws.onmessage = (event) => {
 		console.log("message", event.data);
+		state.value = [state.value[0], event.data];
 	}
 	ws.onclose = ev => {
 		console.log("disconnected", ev.code, ev.reason);
-		setState(ClientState.DISCONNECTED);
+		state.value[0] = ConnectionStatus.DISCONNECTED;
 		ws = undefined;
 	}
 }
 
-function send(message: string) {
-	if (ws !== undefined) ws.send(`${id}: ${message}`);
+function send(message: ClientMessage) {
+	if (ws !== undefined) ws.send(JSON.stringify(message));
 }
 
-function send2() {
-	if (ws !== undefined) ws.send(new Uint8Array([1, 2, 3]));
+function sendUsername(name: string) {
+	send({ type: "join", username: name });
 }
 
 export default function WebsocketClient() {
-	const [state, setState] = useState(ClientState.CONNECTING);
-	if (!isServerSide && state === ClientState.CONNECTING) connect(setState);
+	if (!isServerSide && state.value[0] === ConnectionStatus.CONNECTING) connect();
+	const value = state.value;
+
+	const [inputState, setInputState] = useState("");
 	return (
-		<div class="flex gap-2 w-full">
-			<p class="flex-grow-1 font-bold text-xl">{ClientState[state]}</p>
-			<input type="text" />
-			<Button onClick={() => send2()}>Send</Button>
+		<div class="flex flex-col gap-4">
+			<p class="font-bold text-xl">{ConnectionStatus[value[0]]}</p>
+			<pre class="
+				w-full
+				border-2 border-gray-300
+				rounded-lg
+				px-4 py-2
+				mt-2
+				whitespace-pre-wrap
+				overflow-auto
+			">{value[1]}</pre>
+
+			<input class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 mt-2 focus:outline-none focus:border-blue-500" type="text" value={inputState} onInput={v => setInputState(v.currentTarget.value)} />
+			<Button onClick={() => sendUsername(inputState)}>Send</Button>
 		</div>
 	);
 }

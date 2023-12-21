@@ -4,16 +4,18 @@
 
 import config from "./deno.json" assert { type: "json" };
 import * as $0 from "./routes/[name].tsx";
-import * as $1 from "./routes/api/websocket.ts";
-import * as $2 from "./routes/index.tsx";
+import * as $1 from "./routes/api/games/[id].ts";
+import * as $2 from "./routes/api/games/reset.ts";
+import * as $3 from "./routes/index.tsx";
 import * as $$0 from "./islands/Counter.tsx";
 import * as $$1 from "./islands/WebsocketClient.tsx";
 
 const manifest = {
   routes: {
     "./routes/[name].tsx": $0,
-    "./routes/api/websocket.ts": $1,
-    "./routes/index.tsx": $2,
+    "./routes/api/games/[id].ts": $1,
+    "./routes/api/games/reset.ts": $2,
+    "./routes/index.tsx": $3,
   },
   islands: {
     "./islands/Counter.tsx": $$0,
