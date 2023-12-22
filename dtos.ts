@@ -38,7 +38,7 @@ export enum PlayerStatus {
 	Disconnected
 }
 
-type Player = {
+export type Player = {
 	username: string;
 	points: number;
 	status: PlayerStatus;
@@ -53,6 +53,7 @@ export type GameState = {
 	call?: Card;
 	responses: Record<string, Card[]>;
 	revealOrder?: string[];
+	lastWinner?: string;
 	czarIndex?: number;
 	connected: string[];
 	host: string;

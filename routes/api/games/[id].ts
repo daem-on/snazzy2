@@ -1,6 +1,6 @@
 import { HandlerContext } from "$fresh/server.ts";
 import { ClientMessage, GameState, ServerMessage } from "../../../dtos.ts";
-import { handleMessage, initState } from "../../../gameServer.ts";
+import { handleLeave, handleMessage, initState } from "../../../gameServer.ts";
 import { appShutdown } from "../../../main.ts";
 
 const db = await Deno.openKv();
@@ -82,8 +82,18 @@ export const handler = async (req: Request, ctx: HandlerContext): Promise<Respon
 
 	function cleanup() {
 		reader.cancel();
-		if (gameState)
+		if (gameState) {
 			gameState.connected = gameState?.connected.filter(token => token != playerToken);
+			if (gameState.connected.length === 0) {
+				db.delete(key);
+				return;
+			}
+			handleLeave(
+				gameState,
+				playerToken,
+				state => db.set(key, state),
+			);
+		}
 		sub.unsubscribe();
 		db.set(key, gameState);
 		socket.close();

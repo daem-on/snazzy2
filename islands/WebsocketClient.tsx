@@ -72,6 +72,10 @@ function Code({ children }: { children: string }) {
 	return <code class="bg-gray-100 px-2 rounded-lg whitespace-pre-wrap overflow-x-auto">{children}</code>;
 }
 
+function Card(props: { children: string, onClick?: () => void }) {
+	return <button class="border-2 border-gray-300 rounded-lg px-4 py-2 mt-2 focus:outline-none focus:border-blue-500" onClick={props.onClick}>{props.children}</button>;
+}
+
 export default function WebsocketClient(props: { gameId: string }) {
 	if (!isServerSide && status.value === ConnectionStatus.CONNECTING) connect(props.gameId);
 	const playerInfo = state.value?.players[clientToken.value ?? ""];
@@ -104,7 +108,7 @@ export default function WebsocketClient(props: { gameId: string }) {
 			{
 				playerInfo?.hand && (
 					<div class="flex gap-2">
-						{ playerInfo.hand.map((card, i) => <button key={i} onClick={() => playCard(card)}>{card}</button>) }
+						{ playerInfo.hand.map((card, i) => <Card key={i} onClick={() => playCard(card)}>{card.toString()}</Card>) }
 					</div>
 				)
 			}
@@ -112,7 +116,7 @@ export default function WebsocketClient(props: { gameId: string }) {
 			<div id="responses" class="flex gap-2">
 				{
 					state.value && Object.entries(state.value.responses).map(([playedBy, cards], i) => (
-						<button key={i} onClick={() => pickCard(playedBy)}>{cards.join(", ")}</button>
+						<Card key={i} onClick={() => pickCard(playedBy)}>{cards.join(", ")}</Card>
 					))
 				}
 			</div>

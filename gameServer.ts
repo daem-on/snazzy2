@@ -1,4 +1,4 @@
-import { ClientMessage, GameState, PlayerStatus, QueuedMessage, ServerMessage } from "./dtos.ts";
+import { ClientMessage, GameState, Player, PlayerStatus, QueuedMessage, ServerMessage } from "./dtos.ts";
 import { enqueue } from "./queue.ts";
 
 const handSize = 7;
@@ -25,7 +25,7 @@ function shuffle(array: unknown[]): void {
 }
 
 function nextRound(gameState: GameState, updateState: (state: GameState) => void) {
-	const players = Object.keys(gameState.players);
+	const tokens = Object.keys(gameState.players);
 
 	gameState.roundNumber++;
 	console.log("starting round", gameState.roundNumber);
@@ -35,24 +35,25 @@ function nextRound(gameState: GameState, updateState: (state: GameState) => void
 	gameState.czarIndex = ((gameState.czarIndex ?? -1) + 1) % gameState.connected.length;
 	gameState.players[gameState.connected[gameState.czarIndex]].status = PlayerStatus.Picking;
 
-	for (const player of players) {
-		if (gameState.players[player].status === PlayerStatus.Disconnected
-			|| gameState.players[player].status === PlayerStatus.Picking) continue;
-		gameState.players[player].status = PlayerStatus.Responding;
-
-		let hand = gameState.players[player].hand;
-		if (!hand) {
-			hand = gameState.players[player].hand = [];
-		}
-		if (hand.length < handSize) {
-			const amount = handSize - hand.length;
-			hand.push(...gameState.deck.splice(0, amount));
-		}
+	for (const token of tokens) {
+		const player = gameState.players[token];
+		if (player.status === PlayerStatus.Disconnected
+			|| player.status === PlayerStatus.Picking) continue;
+		player.status = PlayerStatus.Responding;
+		dealHand(player, gameState);
 	}
 
 	gameState.lastRoundStarted = Date.now();
 
 	updateState(gameState);
+}
+
+function dealHand(player: Player, gameState: GameState) {
+	if (!player.hand) player.hand = [];
+	if (player.hand.length < handSize) {
+		const amount = handSize - player.hand.length;
+		player.hand.push(...gameState.deck.splice(0, amount));
+	}
 }
 
 function checkAndReveal(gameState: GameState, updateState: (state: GameState) => void) {
@@ -77,13 +78,7 @@ export function handleMessage(
 ) {
 	switch (message.type) {
 		case "join": {
-			if (gameState.players[playerToken]) return;
-			gameState.players[playerToken] = {
-				points: 0,
-				status: PlayerStatus.Waiting,
-				username: message.username
-			};
-			updateState(gameState);
+			handleJoin(message.username, gameState, playerToken, updateState);
 			break;
 		}
 		case "start": {
@@ -116,6 +111,7 @@ export function handleMessage(
 
 			gameState.players[message.picked].points++;
 			gameState.players[playerToken].status = PlayerStatus.Finished;
+			gameState.lastWinner = message.picked;
 			updateState(gameState);
 			
 			console.log("enqueued next round")
@@ -141,4 +137,50 @@ export function handleQueuedMessage(
 			break;
 		}
 	}
+}
+
+function handleJoin(
+	username: string,
+	gameState: GameState,
+	playerToken: string,
+	updateState: (state: GameState) => void,
+) {
+	if (gameState.players[playerToken]?.status === PlayerStatus.Disconnected) {
+		gameState.players[playerToken].status = PlayerStatus.Waiting;
+		updateState(gameState);
+	} else if (!gameState.players[playerToken]) {
+		gameState.players[playerToken] = {
+			points: 0,
+			status: PlayerStatus.Waiting,
+			username
+		};
+		updateState(gameState);
+	}
+}
+
+export function handleLeave(
+	gameState: GameState,
+	playerToken: string,
+	updateState: (state: GameState) => void,
+) {
+	if (!gameState.players[playerToken]) return;
+	if (gameState.players[playerToken].status === PlayerStatus.Disconnected) return;
+
+	const tokens = Object.keys(gameState.players);
+	if (tokens.length === 0) return;
+
+	if (gameState.host === playerToken) {
+		gameState.host = tokens[0];
+	}
+	if (gameState.players[playerToken].status === PlayerStatus.Picking) {
+		gameState.czarIndex = gameState.connected.indexOf(gameState.host);
+		gameState.players[gameState.host].status = PlayerStatus.Picking;
+		gameState.responses[gameState.host] = [];
+	}
+
+	gameState.players[playerToken].status = PlayerStatus.Disconnected;
+
+	checkAndReveal(gameState, updateState);
+
+	updateState(gameState);
 }
