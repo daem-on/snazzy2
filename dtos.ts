@@ -48,13 +48,11 @@ export type Player = {
 export type GameState = {
 	players: Record<string, Player>;
 	roundNumber: number;
-	reveal: boolean;
 	deck: Card[];
 	call?: Card;
 	responses: Record<string, Card[]>;
-	revealOrder?: string[];
+	reveal?: string[];
 	lastWinner?: string;
-	czarIndex?: number;
 	connected: string[];
 	host: string;
 	lastRoundStarted?: number;

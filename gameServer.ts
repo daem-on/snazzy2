@@ -8,7 +8,6 @@ export function initState(playerToken: string, deckSize: number): GameState {
 	return {
 		players: {},
 		roundNumber: 0,
-		reveal: false,
 		responses: {},
 		deck: [...Array(deckSize).keys()],
 		connected: [playerToken],
@@ -29,11 +28,19 @@ function nextRound(gameState: GameState, updateState: (state: GameState) => void
 
 	gameState.roundNumber++;
 	console.log("starting round", gameState.roundNumber);
-	gameState.reveal = false;
+	gameState.reveal = undefined;
 	gameState.call = Math.floor(Math.random() * 10);
 	gameState.responses = {};
-	gameState.czarIndex = ((gameState.czarIndex ?? -1) + 1) % gameState.connected.length;
-	gameState.players[gameState.connected[gameState.czarIndex]].status = PlayerStatus.Picking;
+	gameState.lastWinner = undefined;
+
+	const czar = Object.entries(gameState.players).find(([_, player]) => player.status === PlayerStatus.Picking);
+
+	for (const player of Object.values(gameState.players))
+		if (player.status === PlayerStatus.Picking) player.status = PlayerStatus.Finished;
+
+	const czarIndex = gameState.connected.indexOf(czar?.[0] ?? "");
+	const newIndex = (czarIndex + 1) % gameState.connected.length;
+	gameState.players[gameState.connected[newIndex]].status = PlayerStatus.Picking;
 
 	for (const token of tokens) {
 		const player = gameState.players[token];
@@ -60,11 +67,8 @@ function checkAndReveal(gameState: GameState, updateState: (state: GameState) =>
 	const players = Object.values(gameState.players);
 	if (players.some(player => player.status === PlayerStatus.Responding)) return;
 
-	gameState.reveal = true;
-	gameState.revealOrder = Object.entries(gameState.players)
-		.filter(([_, player]) => player.status !== PlayerStatus.Disconnected)
-		.map(([token]) => token);
-	shuffle(gameState.revealOrder);
+	gameState.reveal = Object.keys(gameState.responses);
+	shuffle(gameState.reveal);
 	updateState(gameState);
 }
 
@@ -110,7 +114,6 @@ export function handleMessage(
 			if (!gameState.reveal) return;
 
 			gameState.players[message.picked].points++;
-			gameState.players[playerToken].status = PlayerStatus.Finished;
 			gameState.lastWinner = message.picked;
 			updateState(gameState);
 			
@@ -173,7 +176,6 @@ export function handleLeave(
 		gameState.host = tokens[0];
 	}
 	if (gameState.players[playerToken].status === PlayerStatus.Picking) {
-		gameState.czarIndex = gameState.connected.indexOf(gameState.host);
 		gameState.players[gameState.host].status = PlayerStatus.Picking;
 		gameState.responses[gameState.host] = [];
 	}
