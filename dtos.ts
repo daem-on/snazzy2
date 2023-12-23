@@ -1,9 +1,10 @@
 export type ServerMessage = {
 	type: "init";
+	id: string;
 	token: string;
 } | {
 	type: "state";
-	state: GameState;
+	state: GameStateSlice;
 } | {
 	type: "error";
 	message: string;
@@ -16,10 +17,10 @@ export type ClientMessage = {
 	type: "start";
 } | {
 	type: "response";
-	response: number;
+	response: number[];
 } | {
 	type: "pick";
-	picked: string;
+	pickedIndex: number;
 };
 
 export type QueuedMessage = {
@@ -29,6 +30,7 @@ export type QueuedMessage = {
 }
 
 type Card = number;
+type PlayerId = string;
 
 export enum PlayerStatus {
 	Waiting,
@@ -45,15 +47,41 @@ export type Player = {
 	hand?: Card[];
 };
 
+export type DeckDefinition = {
+	calls: number;
+	responses: number;
+	callLengths: number[];
+}
+
+export type DeckState = {
+	calls: Card[];
+	responses: Card[];
+}
+
 export type GameState = {
-	players: Record<string, Player>;
+	players: Record<PlayerId, Player>;
+	tokens: Record<PlayerId, string>;
 	roundNumber: number;
-	deck: Card[];
 	call?: Card;
-	responses: Record<string, Card[]>;
-	reveal?: string[];
-	lastWinner?: string;
-	connected: string[];
-	host: string;
+	responses: Record<PlayerId, Card[]>;
+	reveal?: PlayerId[];
+	lastWinner?: PlayerId;
+	connected: PlayerId[];
+	host: PlayerId;
 	lastRoundStarted?: number;
 };
+
+export type GameStateSlice = {
+	players: Omit<Player, "hand">[];
+	roundNumber: number;
+	call?: Card;
+	revealedResponses?: Card[][];
+	connected: PlayerId[];
+	lastWinner?: {
+		id: PlayerId;
+		username: string;
+	};
+	isHost: boolean;
+	hand?: Card[];
+	status?: PlayerStatus;
+}

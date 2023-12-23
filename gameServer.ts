@@ -1,18 +1,25 @@
-import { ClientMessage, GameState, Player, PlayerStatus, QueuedMessage, ServerMessage } from "./dtos.ts";
+import { ClientMessage, DeckDefinition, DeckState, GameState, GameStateSlice, Player, PlayerStatus, QueuedMessage, ServerMessage } from "./dtos.ts";
 import { enqueue } from "./queue.ts";
 
 const handSize = 7;
 const roundEndDelay = 5000;
 
-export function initState(playerToken: string, deckSize: number): GameState {
+export function initState(playerId: string): GameState {
 	return {
 		players: {},
+		tokens: {},
 		roundNumber: 0,
 		responses: {},
-		deck: [...Array(deckSize).keys()],
-		connected: [playerToken],
-		host: playerToken
+		connected: [playerId],
+		host: playerId
 	};
+}
+
+export function initDeck(def: DeckDefinition): DeckState {
+	return {
+		calls: Array(def.calls).fill(0).map((_, i) => i),
+		responses: Array(def.responses).fill(0).map((_, i) => i),
+	}
 }
 
 // Fisher-Yates
@@ -23,16 +30,22 @@ function shuffle(array: unknown[]): void {
 	}
 }
 
-function nextRound(gameState: GameState, updateState: (state: GameState) => void) {
-	const tokens = Object.keys(gameState.players);
+function nextRound(
+	gameState: GameState,
+	updateState: (state: GameState) => void,
+	deckState: DeckState,
+	updateDeck: (state: DeckState) => void,
+) {
+	const ids = Object.keys(gameState.players);
 
 	gameState.roundNumber++;
 	console.log("starting round", gameState.roundNumber);
 	gameState.reveal = undefined;
-	gameState.call = Math.floor(Math.random() * 10);
 	gameState.responses = {};
 	gameState.lastWinner = undefined;
 
+	gameState.call = deckState.calls.pop() ?? 0;
+	
 	const czar = Object.entries(gameState.players).find(([_, player]) => player.status === PlayerStatus.Picking);
 
 	for (const player of Object.values(gameState.players))
@@ -42,87 +55,100 @@ function nextRound(gameState: GameState, updateState: (state: GameState) => void
 	const newIndex = (czarIndex + 1) % gameState.connected.length;
 	gameState.players[gameState.connected[newIndex]].status = PlayerStatus.Picking;
 
-	for (const token of tokens) {
-		const player = gameState.players[token];
+	for (const id of ids) {
+		const player = gameState.players[id];
 		if (player.status === PlayerStatus.Disconnected
 			|| player.status === PlayerStatus.Picking) continue;
 		player.status = PlayerStatus.Responding;
-		dealHand(player, gameState);
+		dealHand(player, deckState);
 	}
 
 	gameState.lastRoundStarted = Date.now();
 
 	updateState(gameState);
+	updateDeck(deckState);
 }
 
-function dealHand(player: Player, gameState: GameState) {
+function dealHand(player: Player, deckState: DeckState) {
 	if (!player.hand) player.hand = [];
 	if (player.hand.length < handSize) {
 		const amount = handSize - player.hand.length;
-		player.hand.push(...gameState.deck.splice(0, amount));
+		player.hand.push(...deckState.responses.splice(0, amount));
 	}
 }
 
-function checkAndReveal(gameState: GameState, updateState: (state: GameState) => void) {
+function checkAndReveal(gameState: GameState) {
 	const players = Object.values(gameState.players);
 	if (players.some(player => player.status === PlayerStatus.Responding)) return;
 
 	gameState.reveal = Object.keys(gameState.responses);
 	shuffle(gameState.reveal);
-	updateState(gameState);
 }
 
 export function handleMessage(
 	message: ClientMessage,
 	sendResponse: (response: ServerMessage) => void,
 	gameState: GameState,
-	playerToken: string,
+	deckState: DeckState,
+	playerId: string,
 	updateState: (state: GameState) => void,
+	updateDeck: (state: DeckState) => void,
 	gameId: string,
 ) {
 	switch (message.type) {
 		case "join": {
-			handleJoin(message.username, gameState, playerToken, updateState);
+			handleJoin(message.username, gameState, playerId, updateState);
 			break;
 		}
 		case "start": {
-			if (gameState.host !== playerToken) {
+			if (gameState.host !== playerId) {
 				sendResponse({ type: "error", message: "only host can start" });
 				return;
 			}
 			if (gameState.roundNumber !== 0) return;
-			shuffle(gameState.deck);
+			shuffle(deckState.calls);
+			shuffle(deckState.responses);
+			updateDeck(deckState);
 
-			nextRound(gameState, updateState);
+			nextRound(gameState, updateState, deckState, updateDeck);
 			break;
 		}
 		case "response": {
+			const player = gameState.players[playerId];
 			if (gameState.roundNumber === 0) return;
-			if (gameState.responses[playerToken]) return;
-			if (gameState.players[playerToken].status !== PlayerStatus.Responding) return;
+			if (gameState.responses[playerId]) return;
+			if (player.status !== PlayerStatus.Responding) return;
+			if (!player.hand) return;
 
-			gameState.responses[playerToken] = [message.response];
-			gameState.players[playerToken].status = PlayerStatus.Finished;
+			for (const card of message.response) {
+				if (!player.hand.includes(card)) return;
+			}
+			player.hand = player.hand.filter(card => !message.response.includes(card));
+
+			gameState.responses[playerId] = message.response;
+			player.status = PlayerStatus.Finished;
+			checkAndReveal(gameState);
 			updateState(gameState);
-			checkAndReveal(gameState, updateState);
 			break;
 		}
 		case "pick": {
 			if (gameState.roundNumber === 0) return;
-			if (gameState.players[playerToken].status !== PlayerStatus.Picking) return;
-			if (!gameState.responses[message.picked]) return;
+			if (gameState.players[playerId].status !== PlayerStatus.Picking) return;
 			if (!gameState.reveal) return;
 
-			gameState.players[message.picked].points++;
-			gameState.lastWinner = message.picked;
+			const pickedId = gameState.reveal[message.pickedIndex];
+			if (!gameState.responses[pickedId]) throw new Error("response doesn't exist");
+
+			gameState.players[pickedId].points++;
+			gameState.lastWinner = pickedId;
 			updateState(gameState);
 			
-			console.log("enqueued next round")
 			enqueue({
 				type: "nextRound",
 				gameId,
 				ifNotChangedSince: Date.now()
 			}, roundEndDelay);
+			console.log("enqueued next round");
 			break;
 		}
 	}
@@ -131,12 +157,14 @@ export function handleMessage(
 export function handleQueuedMessage(
 	message: QueuedMessage,
 	gameState: GameState,
-	updateState: (state: GameState) => void
+	updateState: (state: GameState) => void,
+	deckState: DeckState,
+	updateDeck: (state: DeckState) => void,
 ) {
 	switch (message.type) {
 		case "nextRound": {
 			if ((gameState.lastRoundStarted ?? 0) > message.ifNotChangedSince) return;
-			nextRound(gameState, updateState);
+			nextRound(gameState, updateState, deckState, updateDeck);
 			break;
 		}
 	}
@@ -145,14 +173,14 @@ export function handleQueuedMessage(
 function handleJoin(
 	username: string,
 	gameState: GameState,
-	playerToken: string,
+	playerId: string,
 	updateState: (state: GameState) => void,
 ) {
-	if (gameState.players[playerToken]?.status === PlayerStatus.Disconnected) {
-		gameState.players[playerToken].status = PlayerStatus.Waiting;
+	if (gameState.players[playerId]?.status === PlayerStatus.Disconnected) {
+		gameState.players[playerId].status = PlayerStatus.Waiting;
 		updateState(gameState);
-	} else if (!gameState.players[playerToken]) {
-		gameState.players[playerToken] = {
+	} else if (!gameState.players[playerId]) {
+		gameState.players[playerId] = {
 			points: 0,
 			status: PlayerStatus.Waiting,
 			username
@@ -163,26 +191,47 @@ function handleJoin(
 
 export function handleLeave(
 	gameState: GameState,
-	playerToken: string,
+	playerId: string,
 	updateState: (state: GameState) => void,
 ) {
-	if (!gameState.players[playerToken]) return;
-	if (gameState.players[playerToken].status === PlayerStatus.Disconnected) return;
+	if (!gameState.players[playerId]) return;
+	if (gameState.players[playerId].status === PlayerStatus.Disconnected) return;
 
-	const tokens = Object.keys(gameState.players);
-	if (tokens.length === 0) return;
+	const ids = Object.keys(gameState.players);
+	if (ids.length === 0) return;
 
-	if (gameState.host === playerToken) {
-		gameState.host = tokens[0];
+	if (gameState.host === playerId) {
+		gameState.host = ids[0];
 	}
-	if (gameState.players[playerToken].status === PlayerStatus.Picking) {
+	if (gameState.players[playerId].status === PlayerStatus.Picking) {
 		gameState.players[gameState.host].status = PlayerStatus.Picking;
 		gameState.responses[gameState.host] = [];
 	}
 
-	gameState.players[playerToken].status = PlayerStatus.Disconnected;
+	gameState.players[playerId].status = PlayerStatus.Disconnected;
 
-	checkAndReveal(gameState, updateState);
-
+	checkAndReveal(gameState);
 	updateState(gameState);
+}
+
+export function createStateSlice(gameState: GameState, playerId: string): GameStateSlice {
+	const player = gameState.players[playerId] as Player | undefined;
+	return {
+		connected: gameState.connected,
+		roundNumber: gameState.roundNumber,
+		players: Object.entries(gameState.players).map(([_, p]) => ({
+			username: p.username,
+			points: p.points,
+			status: p.status,
+		})),
+		call: gameState.call,
+		revealedResponses: gameState.reveal?.map(id => gameState.responses[id]),
+		lastWinner: gameState.lastWinner ? {
+			id: gameState.lastWinner,
+			username: gameState.players[gameState.lastWinner].username
+		} : undefined,
+		isHost: gameState.host === playerId,
+		hand: player?.hand,
+		status: player?.status
+	}
 }

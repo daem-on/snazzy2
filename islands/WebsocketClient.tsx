@@ -1,7 +1,7 @@
 import { signal } from "@preact/signals";
 import { useState } from "preact/hooks";
 import { Button } from "../components/Button.tsx";
-import { ClientMessage, GameState, PlayerStatus, ServerMessage } from "../dtos.ts";
+import { ClientMessage, GameStateSlice, PlayerStatus, ServerMessage } from "../dtos.ts";
 
 enum ConnectionStatus {
 	CONNECTING,
@@ -13,8 +13,8 @@ const isServerSide = typeof location === "undefined";
 let ws: WebSocket | undefined;
 
 const status = signal<ConnectionStatus>(ConnectionStatus.CONNECTING);
-const state = signal<GameState | undefined>(undefined);
-const clientToken = signal<string | undefined>(undefined);
+const state = signal<GameStateSlice | undefined>(undefined);
+const clientId = signal<string | undefined>(undefined);
 
 function connect(gameId: string) {
 	console.log("connecting");
@@ -36,7 +36,7 @@ function connect(gameId: string) {
 		if (message.type === "state") {
 			state.value = message.state;
 		} else if (message.type === "init") {
-			clientToken.value = message.token;
+			clientId.value = message.id;
 		}
 	}
 	ws.onclose = ev => {
@@ -61,11 +61,11 @@ async function reset() {
 }
 
 function playCard(card: number) {
-	send({ type: "response", response: card });
+	send({ type: "response", response: [card] });
 }
 
-function pickCard(playedBy: string) {
-	send({ type: "pick", picked: playedBy });
+function pickCard(index: number) {
+	send({ type: "pick", pickedIndex: index });
 }
 
 function Code({ children }: { children: string }) {
@@ -78,7 +78,6 @@ function Card(props: { children: string, onClick?: () => void }) {
 
 export default function WebsocketClient(props: { gameId: string }) {
 	if (!isServerSide && status.value === ConnectionStatus.CONNECTING) connect(props.gameId);
-	const playerInfo = state.value?.players[clientToken.value ?? ""];
 
 	const [inputState, setInputState] = useState("");
 	return (
@@ -91,32 +90,23 @@ export default function WebsocketClient(props: { gameId: string }) {
 
 			<Button onClick={() => reset()}>Reset</Button>
 
-			<p class="font-bold text-xl">Client token: {clientToken.value}</p>
-			{ state.value?.host === clientToken.value && <p class="font-bold text-xl">You are the host</p> }
+			<p class="font-bold text-xl">Client id: {clientId.value}</p>
+			{ state.value?.isHost && <p class="font-bold text-xl">You are the host</p> }
 
-			{ playerInfo?.status === PlayerStatus.Picking && <p class="font-bold text-xl">You are the Card Czar.</p> }
-
-			{
-				playerInfo && (
-					<div>
-						<p class="font-bold text-xl">Player info</p>
-						<Code>{JSON.stringify(playerInfo, null, 2)}</Code>
-					</div>
-				)
-			}
+			{ state.value?.status === PlayerStatus.Picking && <p class="font-bold text-xl">You are the Card Czar.</p> }
 
 			{
-				playerInfo?.hand && (
+				state.value?.hand && (
 					<div class="flex gap-2">
-						{ playerInfo.hand.map((card, i) => <Card key={i} onClick={() => playCard(card)}>{card.toString()}</Card>) }
+						{ state.value.hand.map((card, i) => <Card key={i} onClick={() => playCard(card)}>{card.toString()}</Card>) }
 					</div>
 				)
 			}
 
 			<div id="responses" class="flex gap-2">
 				{
-					state.value && Object.entries(state.value.responses).map(([playedBy, cards], i) => (
-						<Card key={i} onClick={() => pickCard(playedBy)}>{cards.join(", ")}</Card>
+					state.value && state.value.revealedResponses?.map((cards, i) => (
+						<Card key={i} onClick={() => pickCard(i)}>{cards.join(", ")}</Card>
 					))
 				}
 			</div>
