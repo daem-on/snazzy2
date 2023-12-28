@@ -11,5 +11,9 @@ export const handler = async (_req: Request, _ctx: HandlerContext) => {
 	for await (const entry of decks) {
 		await db.delete(entry.key);
 	}
+	const defs = db.list({ prefix: ["def"] });
+	for await (const entry of defs) {
+		await db.delete(entry.key);
+	}
 	return new Response("ok");
 }

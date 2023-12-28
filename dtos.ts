@@ -2,6 +2,7 @@ export type ServerMessage = {
 	type: "init";
 	id: string;
 	token: string;
+	deckUrl: string;
 } | {
 	type: "state";
 	state: GameStateSlice;
@@ -51,6 +52,12 @@ export type DeckDefinition = {
 	calls: number;
 	responses: number;
 	callLengths: number[];
+	url: string;
+}
+
+export type DeckSource = {
+	calls: string[][];
+	responses: string[][];
 }
 
 export type DeckState = {

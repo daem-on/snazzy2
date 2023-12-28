@@ -1,7 +1,7 @@
 import { signal } from "@preact/signals";
 import { useState } from "preact/hooks";
 import { Button } from "../components/Button.tsx";
-import { ClientMessage, GameStateSlice, PlayerStatus, ServerMessage } from "../dtos.ts";
+import { ClientMessage, DeckSource, GameStateSlice, PlayerStatus, ServerMessage } from "../dtos.ts";
 
 enum ConnectionStatus {
 	CONNECTING,
@@ -15,6 +15,15 @@ let ws: WebSocket | undefined;
 const status = signal<ConnectionStatus>(ConnectionStatus.CONNECTING);
 const state = signal<GameStateSlice | undefined>(undefined);
 const clientId = signal<string | undefined>(undefined);
+const deck = signal<DeckSource | undefined>(undefined);
+
+async function fetchDeck(url: string) {
+	const resp = await fetch(url);
+	if (resp.ok)
+		deck.value = await resp.json() as DeckSource;
+	else
+		console.error("failed to fetch deck", resp.status, resp.statusText);
+}
 
 function connect(gameId: string) {
 	console.log("connecting");
@@ -37,6 +46,7 @@ function connect(gameId: string) {
 			state.value = message.state;
 		} else if (message.type === "init") {
 			clientId.value = message.id;
+			fetchDeck(message.deckUrl);
 		}
 	}
 	ws.onclose = ev => {
@@ -72,8 +82,27 @@ function Code({ children }: { children: string }) {
 	return <code class="bg-gray-100 px-2 rounded-lg whitespace-pre-wrap overflow-x-auto">{children}</code>;
 }
 
-function Card(props: { children: string, onClick?: () => void }) {
-	return <button class="border-2 border-gray-300 rounded-lg px-4 py-2 mt-2 focus:outline-none focus:border-blue-500" onClick={props.onClick}>{props.children}</button>;
+function BlackCard(props: { children: number }) {
+	if (!deck.value) return <p>loading...</p>;
+	const text = deck.value.calls[props.children].join(" ____ ");
+	return <p class="font-bold text-xl bg-black text-white px-4">{text}</p>;
+}
+
+function WhiteCard(props: { children: number, onClick?: () => void }) {
+	if (!deck.value) return <p>loading...</p>;
+	const text = deck.value.responses[props.children][0];
+	return <button class="border-2 border-gray-300 rounded-lg px-4 py-2 mt-2 focus:outline-none focus:border-blue-500" onClick={props.onClick}>{text}</button>;
+}
+
+function ResponseCard(props: { call: number, responses: number[], onClick?: () => void }) {
+	if (!deck.value) return <p>loading...</p>;
+	const text = deck.value.calls[props.call].map((part, i) => {
+		const responseIndex = props.responses[i];
+		if (responseIndex === undefined) return part;
+		const response = deck.value!.responses[responseIndex][0];
+		return part + response;
+	}).join("");
+	return <button class="border-2 border-gray-300 rounded-lg px-4 py-2 mt-2 focus:outline-none focus:border-blue-500" onClick={props.onClick}>{text}</button>;
 }
 
 export default function WebsocketClient(props: { gameId: string }) {
@@ -95,18 +124,20 @@ export default function WebsocketClient(props: { gameId: string }) {
 
 			{ state.value?.status === PlayerStatus.Picking && <p class="font-bold text-xl">You are the Card Czar.</p> }
 
+			{ state.value?.call && <BlackCard>{state.value.call}</BlackCard> }
+
 			{
 				state.value?.hand && (
 					<div class="flex gap-2">
-						{ state.value.hand.map((card, i) => <Card key={i} onClick={() => playCard(card)}>{card.toString()}</Card>) }
+						{ state.value.hand.map((card, i) => <WhiteCard key={i} onClick={() => playCard(card)}>{card}</WhiteCard>) }
 					</div>
 				)
 			}
 
 			<div id="responses" class="flex gap-2">
 				{
-					state.value && state.value.revealedResponses?.map((cards, i) => (
-						<Card key={i} onClick={() => pickCard(i)}>{cards.join(", ")}</Card>
+					state.value && state.value.call && state.value.revealedResponses?.map((cards, i) => (
+						<ResponseCard key={i} onClick={() => pickCard(i)} call={state.value!.call!} responses={cards}></ResponseCard>
 					))
 				}
 			</div>

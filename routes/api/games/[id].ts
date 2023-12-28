@@ -1,5 +1,6 @@
 import { HandlerContext } from "$fresh/server.ts";
-import { ClientMessage, DeckState, GameState, ServerMessage } from "../../../dtos.ts";
+import vs from "https://deno.land/x/value_schema@v4.0.0-rc.2/mod.ts";
+import { ClientMessage, DeckDefinition, DeckState, GameState, ServerMessage } from "../../../dtos.ts";
 import { createStateSlice, handleLeave, handleMessage, initDeck, initState } from "../../../gameServer.ts";
 import { appShutdown } from "../../../main.ts";
 
@@ -53,6 +54,7 @@ export const handler = async (req: Request, ctx: HandlerContext): Promise<Respon
 async function initServer(socket: WebSocket, gameId: string, url: URL) {
 	const gameKey = ["game", gameId];
 	const deckKey = ["deck", gameId];
+	const defKey = ["def", gameId];
 	
 	const claimedToken = url.searchParams.get("token");
 
@@ -60,20 +62,32 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 
 	const [playerId, playerToken] = getCredentials(claimedToken, gameState);
 
-	socket.onopen = () => {
-		sendMessage(socket, { type: "init", id: playerId, token: playerToken });
-	};
-
 	if (!gameState || gameState.connected.length === 0) {
 		gameState = initState(playerId);
 	} else {
 		gameState.connected.push(playerId);
 	}
 	db.set(gameKey, gameState);
+
+	let definition = (await db.get(defKey)).value as DeckDefinition;
+	if (!definition) {
+		const deckUrl = url.searchParams.get("deck");
+		if (!deckUrl) throw new Error("no deck url");
+
+		definition = await fetchAndValidateDeck(deckUrl);
+		db.set(defKey, definition);
+	}
+	
+	socket.onopen = () => {
+		sendMessage(socket, { type: "init", id: playerId, token: playerToken, deckUrl: definition.url });
+	};
 	
 	let deckState = (await db.get(deckKey)).value as DeckState;
 	if (!deckState) {
-		deckState = initDeck({ calls: 3, responses: 20, callLengths: [1, 1, 1] });
+		const deckUrl = url.searchParams.get("deck");
+		if (!deckUrl) throw new Error("no deck url");
+
+		deckState = initDeck(definition);
 		db.set(deckKey, deckState);
 	}
 
@@ -112,6 +126,8 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 			gameState.connected = gameState?.connected.filter(id => id != playerId);
 			if (gameState.connected.length === 0) {
 				db.delete(gameKey);
+				db.delete(deckKey);
+				db.delete(defKey);
 				return;
 			}
 			handleLeave(
@@ -138,4 +154,26 @@ function getCredentials(claimed: string | null, gameState: GameState | null): [p
 	} else {
 		return [crypto.randomUUID(), crypto.randomUUID()];
 	}
+}
+
+async function fetchAndValidateDeck(url: string): Promise<DeckDefinition> {
+	console.log("fetching deck", url);
+	const response = await fetch(url);
+	const deck = await response.json();
+	const result = vs.applySchemaObject({
+		calls: vs.array({
+			each: vs.array({
+				each: vs.string({ ifEmptyString: null })
+			})
+		}),
+		responses: vs.array({
+			each: vs.array({ each: vs.string() })
+		}),
+	}, deck);
+	return {
+		calls: result.calls.length,
+		responses: result.responses.length,
+		callLengths: result.calls.map(c => c.length),
+		url,
+	};
 }

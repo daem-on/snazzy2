@@ -15,7 +15,7 @@ kv.listenQueue(async m => {
 	const stored = await kv.get(gameKey);
 	const gameState = stored.value as GameState | null;
 	if (!gameState) return;
-	const deckKey = ["decks", message.gameId];
+	const deckKey = ["deck", message.gameId];
 	const deckState = (await kv.get(deckKey)).value as DeckState;
 	handleQueuedMessage(
 		message,
