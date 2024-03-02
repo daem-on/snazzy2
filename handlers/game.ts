@@ -64,9 +64,14 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 		db.set(defKey, definition);
 	}
 	
-	socket.onopen = () => {
+	function sendInit() {
 		sendMessage(socket, { type: "init", id: playerId, token: playerToken, deckUrl: definition.url });
-	};
+	}
+	if (socket.readyState === WebSocket.OPEN) {
+		sendInit();
+	} else {
+		socket.onopen = () => sendInit();
+	}
 	
 	let deckState = (await db.get(deckKey)).value as DeckState;
 	if (!deckState) {
@@ -94,6 +99,7 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 
 	socket.onmessage = event => {
 		const message = JSON.parse(event.data) as ClientMessage;
+		console.log("message", message);
 		handleMessage(
 			message,
 			response => sendMessage(socket, response),

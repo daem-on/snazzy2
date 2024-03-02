@@ -106,6 +106,7 @@ export function handleMessage(
 				return;
 			}
 			if (gameState.roundNumber !== 0) return;
+			if (!Object.values(gameState.players).length) return;
 			shuffle(deckState.calls);
 			shuffle(deckState.responses);
 			updateDeck(deckState);
@@ -197,7 +198,7 @@ export function handleLeave(
 	if (!gameState.players[playerId]) return;
 	if (gameState.players[playerId].status === PlayerStatus.Disconnected) return;
 
-	const ids = Object.keys(gameState.players);
+	const ids = gameState.connected;
 	if (ids.length === 0) return;
 
 	if (gameState.host === playerId) {
