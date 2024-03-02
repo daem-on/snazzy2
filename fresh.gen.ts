@@ -9,7 +9,7 @@ import * as $2 from "./routes/api/reset.ts";
 import * as $3 from "./routes/index.tsx";
 import * as $4 from "./routes/test-client/[id].tsx";
 import * as $$0 from "./islands/Counter.tsx";
-import * as $$1 from "./islands/WebsocketClient.tsx";
+import * as $$1 from "./islands/TestClient.tsx";
 
 const manifest = {
   routes: {
@@ -21,7 +21,7 @@ const manifest = {
   },
   islands: {
     "./islands/Counter.tsx": $$0,
-    "./islands/WebsocketClient.tsx": $$1,
+    "./islands/TestClient.tsx": $$1,
   },
   baseUrl: import.meta.url,
   config,

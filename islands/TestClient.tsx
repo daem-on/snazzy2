@@ -105,7 +105,7 @@ function ResponseCard(props: { call: number, responses: number[], onClick?: () =
 	return <button class="border-2 border-gray-300 rounded-lg px-4 py-2 mt-2 focus:outline-none focus:border-blue-500" onClick={props.onClick}>{text}</button>;
 }
 
-export default function WebsocketClient(props: { gameId: string }) {
+export default function TestClient(props: { gameId: string }) {
 	if (!isServerSide && status.value === ConnectionStatus.CONNECTING) connect(props.gameId);
 
 	const [inputState, setInputState] = useState("");
