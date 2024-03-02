@@ -1,8 +1,7 @@
-import { HandlerContext } from "$fresh/server.ts";
 import vs from "https://deno.land/x/value_schema@v4.0.0-rc.2/mod.ts";
-import { ClientMessage, DeckDefinition, DeckState, GameState, ServerMessage } from "../../../dtos.ts";
-import { createStateSlice, handleLeave, handleMessage, initDeck, initState } from "../../../gameServer.ts";
-import { appShutdown } from "../../../main.ts";
+import { ClientMessage, DeckDefinition, DeckState, GameState, ServerMessage } from "../dtos.ts";
+import { createStateSlice, handleLeave, handleMessage, initDeck, initState } from "../gameServer.ts";
+import { appShutdown } from "../main.ts";
 
 const db = await Deno.openKv();
 
@@ -31,24 +30,11 @@ class AsyncReader<T> {
 	}
 }
 
-export const handler = async (req: Request, ctx: HandlerContext): Promise<Response> => {
-	const upgrade = req.headers.get("upgrade") || "";
-	if (upgrade.toLowerCase() != "websocket") {
-	  return new Response("request isn't trying to upgrade to websocket.");
-	}
-	
-	const gameId = ctx.params.id;
-	if (gameId === undefined) {
-		return new Response("invalid id");
-	}
-
-	const { socket, response } = Deno.upgradeWebSocket(req);
-
-	const url = new URL(req.url);
-	
-	await initServer(socket, gameId, url);
-
-	return response;
+export const gameHandler = (url: URL, socket: WebSocket, id: string): void => {	
+	initServer(socket, id, url).catch(e => {
+		console.error("Error in game handler @", url.href, e);
+		socket.close(1011, "Internal error");
+	});
 }
 
 async function initServer(socket: WebSocket, gameId: string, url: URL) {

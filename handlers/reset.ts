@@ -1,8 +1,6 @@
-import { HandlerContext } from "$fresh/server.ts";
-
 const db = await Deno.openKv();
 
-export const handler = async (_req: Request, _ctx: HandlerContext) => {
+export const resetHandler = async () => {
 	const games = db.list({ prefix: ["game"] });
 	for await (const entry of games) {
 		await db.delete(entry.key);
@@ -15,5 +13,4 @@ export const handler = async (_req: Request, _ctx: HandlerContext) => {
 	for await (const entry of defs) {
 		await db.delete(entry.key);
 	}
-	return new Response("ok");
 }

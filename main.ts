@@ -1,15 +1,7 @@
-/// <reference lib="dom" />
-/// <reference lib="dom.iterable" />
-/// <reference lib="dom.asynciterable" />
-/// <reference lib="deno.ns" />
-
-import { start } from "$fresh/server.ts";
-import manifest from "./fresh.gen.ts";
-
-import twindPlugin from "$fresh/plugins/twind.ts";
-import twindConfig from "./twind.config.ts";
-
+import { Application, Router } from "https://deno.land/x/oak@v14.1.1/mod.ts";
 import { Subject } from "https://esm.sh/rxjs@7.8.1";
+import { gameHandler } from "./handlers/game.ts";
+import { resetHandler } from "./handlers/reset.ts";
 
 export const appShutdown = new Subject<void>();
 
@@ -24,4 +16,33 @@ Deno.addSignalListener("SIGINT", () => {
 	Deno.exit();
 });
 
-await start(manifest, { plugins: [twindPlugin(twindConfig)] });
+const router = new Router();
+router
+	.get("/api/games/:id", (context) => {
+		const socket = context.upgrade();
+		const url = context.request.url;
+		gameHandler(url, socket, context.params.id);
+	})
+	.get("/api/reset", (context) => {
+		context.response.body = "ok";
+		return resetHandler();
+	})
+	.get("/error", () => {
+		throw new Error("test error");
+	});
+
+const app = new Application();
+
+app.use(async (ctx, next) => {
+	try {
+		await next();
+	} catch (e) {
+		console.error("Error in request", ctx.request.url.href, e);
+		ctx.response.status = 500;
+	}
+});
+
+app.use(router.routes());
+app.use(router.allowedMethods());
+
+await app.listen({ port: 8000 });
