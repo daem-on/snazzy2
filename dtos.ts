@@ -87,6 +87,7 @@ export type GameStateSlice = {
 	lastWinner?: {
 		id: PlayerId;
 		username: string;
+		revealIndex: number;
 	};
 	isHost: boolean;
 	hand?: Card[];

@@ -228,7 +228,8 @@ export function createStateSlice(gameState: GameState, playerId: string): GameSt
 		revealedResponses: gameState.reveal?.map(id => gameState.responses[id]),
 		lastWinner: gameState.lastWinner ? {
 			id: gameState.lastWinner,
-			username: gameState.players[gameState.lastWinner].username
+			username: gameState.players[gameState.lastWinner].username,
+			revealIndex: gameState.reveal?.indexOf(gameState.lastWinner) ?? -1,
 		} : undefined,
 		isHost: gameState.host === playerId,
 		hand: player?.hand,
