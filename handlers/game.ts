@@ -30,11 +30,13 @@ class AsyncReader<T> {
 	}
 }
 
-export const gameHandler = (url: URL, socket: WebSocket, id: string): void => {	
-	initServer(socket, id, url).catch(e => {
-		console.error("Error in game handler @", url.href, e);
-		socket.close(1011, "Internal error");
-	});
+function onWebsocketInit(socket: WebSocket, callback: () => void) {
+	if (socket.readyState === WebSocket.OPEN) callback();
+	else socket.onopen = callback;
+}
+
+export const gameHandler = (url: URL, socket: WebSocket, id: string): Promise<void> => {
+	return initServer(socket, id, url);
 }
 
 async function initServer(socket: WebSocket, gameId: string, url: URL) {
@@ -64,14 +66,9 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 		db.set(defKey, definition);
 	}
 	
-	function sendInit() {
+	onWebsocketInit(socket, () => {
 		sendMessage(socket, { type: "init", id: playerId, token: playerToken, deckUrl: definition.url });
-	}
-	if (socket.readyState === WebSocket.OPEN) {
-		sendInit();
-	} else {
-		socket.onopen = () => sendInit();
-	}
+	});
 	
 	let deckState = (await db.get(deckKey)).value as DeckState;
 	if (!deckState) {

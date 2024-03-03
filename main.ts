@@ -1,4 +1,3 @@
-import { Application, Router } from "https://deno.land/x/oak@v14.1.1/mod.ts";
 import { Subject } from "https://esm.sh/rxjs@7.8.1";
 import { gameHandler } from "./handlers/game.ts";
 import { resetHandler } from "./handlers/reset.ts";
@@ -16,33 +15,42 @@ Deno.addSignalListener("SIGINT", () => {
 	Deno.exit();
 });
 
-const router = new Router();
-router
-	.get("/api/games/:id", (context) => {
-		const socket = context.upgrade();
-		const url = context.request.url;
-		gameHandler(url, socket, context.params.id);
-	})
-	.get("/api/reset", (context) => {
-		context.response.body = "ok";
-		return resetHandler();
-	})
-	.get("/error", () => {
-		throw new Error("test error");
-	});
+async function routeRequest(req: Request): Promise<Response> {
+	const url = new URL(req.url);
+	const path = url.pathname;
 
-const app = new Application();
-
-app.use(async (ctx, next) => {
-	try {
-		await next();
-	} catch (e) {
-		console.error("Error in request", ctx.request.url.href, e);
-		ctx.response.status = 500;
+	if (path.startsWith("/games/")) {
+		const gameId = path.split("/")[2] as string | undefined;
+		const upgrade = req.headers.get("upgrade") || "";
+		if (upgrade.toLowerCase() != "websocket") {
+			return new Response("request isn't trying to upgrade to websocket.");
+		}
+		if (!gameId) {
+			return new Response("game id not found in path.");
+		}
+		const { socket, response } = Deno.upgradeWebSocket(req);
+		await gameHandler(url, socket, gameId);
+		return response;
+	} else if (path === "/reset") {
+		await resetHandler();
+		return new Response("ok");
+	} else if (path === "/health") {
+		return new Response("ok", {
+			status: 200,
+			headers: { "Access-Control-Allow-Origin": "*" }
+		});
+	} else {
+		return new Response("Not found\n", { status: 404 });
 	}
-});
+}
 
-app.use(router.routes());
-app.use(router.allowedMethods());
+async function handleRequest(req: Request): Promise<Response> {
+	try {
+		return await routeRequest(req);
+	} catch (e) {
+		console.error("Error in request handler", e);
+		return new Response("Internal error\n", { status: 500 });
+	}
+}
 
-await app.listen({ port: 8000 });
+Deno.serve({ port: 8000 }, handleRequest);
