@@ -1,11 +1,10 @@
-# fresh project
+# Snazzy with Deno (`snazzy2`)
 
-### Usage
+This repo is the second implementation of the Snazzy backend, this time with Deno (using Deno Deploy's servers and KV). There is no frontend included here, that's in a separate repository.
 
-Start the project:
+![logo](https://i.imgur.com/8wnwx4g.png)
 
-```
-deno task start
-```
+An online Cards Agains Humanity implementation
 
-This will watch the project directory and restart as necessary.
+![main screenshot](https://i.imgur.com/F7gIAzc.png)
+
