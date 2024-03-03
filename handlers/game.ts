@@ -66,6 +66,7 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 		} else {
 			gameState.connected.push(playerId);
 		}
+		gameState.tokens[playerId] = playerToken;
 		db.set(gameKey, gameState);
 
 		onCleanup(() => {
@@ -98,9 +99,6 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 		
 		let deckState = (await db.get(deckKey)).value as DeckState;
 		if (!deckState) {
-			const deckUrl = url.searchParams.get("deck");
-			if (!deckUrl) throw new Error("no deck url");
-	
 			deckState = initDeck(definition);
 			db.set(deckKey, deckState);
 		}
