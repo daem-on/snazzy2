@@ -136,6 +136,7 @@ export function handleMessage(
 			if (gameState.roundNumber === 0) return;
 			if (gameState.players[playerId].status !== PlayerStatus.Picking) return;
 			if (!gameState.reveal) return;
+			if (gameState.lastWinner) return;
 
 			const pickedId = gameState.reveal[message.pickedIndex];
 			if (!gameState.responses[pickedId]) throw new Error("response doesn't exist");
