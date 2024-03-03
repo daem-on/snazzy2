@@ -35,103 +35,125 @@ function onWebsocketInit(socket: WebSocket, callback: () => void) {
 	else socket.onopen = callback;
 }
 
+function createCleanup() {
+	const cleanupTasks: (() => void)[] = [];
+	return {
+		onCleanup: (task: () => void) => cleanupTasks.push(task),
+		cleanup: () => cleanupTasks.forEach(t => t()),
+	};
+}
+
 export const gameHandler = (url: URL, socket: WebSocket, id: string): Promise<void> => {
 	return initServer(socket, id, url);
 }
 
 async function initServer(socket: WebSocket, gameId: string, url: URL) {
-	const gameKey = ["game", gameId];
-	const deckKey = ["deck", gameId];
-	const defKey = ["def", gameId];
-	
-	const claimedToken = url.searchParams.get("token");
+	const { cleanup, onCleanup } = createCleanup();
 
-	let gameState = (await db.get(gameKey)).value as GameState;
+	try {
+		const gameKey = ["game", gameId];
+		const deckKey = ["deck", gameId];
+		const defKey = ["def", gameId];
+		
+		const claimedToken = url.searchParams.get("token");
 
-	const [playerId, playerToken] = getCredentials(claimedToken, gameState);
+		let gameState = (await db.get(gameKey)).value as GameState;
 
-	if (!gameState || gameState.connected.length === 0) {
-		gameState = initState(playerId);
-	} else {
-		gameState.connected.push(playerId);
-	}
-	db.set(gameKey, gameState);
+		const [playerId, playerToken] = getCredentials(claimedToken, gameState);
 
-	let definition = (await db.get(defKey)).value as DeckDefinition;
-	if (!definition) {
-		const deckUrl = url.searchParams.get("deck");
-		if (!deckUrl) throw new Error("no deck url");
+		if (!gameState || gameState.connected.length === 0) {
+			gameState = initState(playerId);
+		} else {
+			gameState.connected.push(playerId);
+		}
+		db.set(gameKey, gameState);
 
-		definition = await fetchAndValidateDeck(deckUrl);
-		db.set(defKey, definition);
-	}
-	
-	onWebsocketInit(socket, () => {
-		sendMessage(socket, { type: "init", id: playerId, token: playerToken, deckUrl: definition.url });
-	});
-	
-	let deckState = (await db.get(deckKey)).value as DeckState;
-	if (!deckState) {
-		const deckUrl = url.searchParams.get("deck");
-		if (!deckUrl) throw new Error("no deck url");
-
-		deckState = initDeck(definition);
-		db.set(deckKey, deckState);
-	}
-
-	const gameReader = new AsyncReader(db.watch([gameKey]));
-	gameReader.start(state => {
-		// console.log("update", state.value);
-		gameState = state.value as GameState;
-		if (!gameState) return;
-		sendMessage(socket, {
-			type: "state",
-			state: createStateSlice(gameState, playerId)
-		});
-	});
-	const deckReader = new AsyncReader(db.watch([deckKey]));
-	deckReader.start(state => {
-		deckState = state.value as DeckState;
-	});
-
-	socket.onmessage = event => {
-		const message = JSON.parse(event.data) as ClientMessage;
-		console.log("message", message);
-		handleMessage(
-			message,
-			response => sendMessage(socket, response),
-			gameState,
-			deckState,
-			playerId,
-			state => db.set(gameKey, state),
-			state => db.set(deckKey, state),
-			gameId,
-		);
-	};
-
-	function cleanup() {
-		gameReader.cancel();
-		if (gameState) {
-			gameState.connected = gameState?.connected.filter(id => id != playerId);
-			if (gameState.connected.length === 0) {
-				db.delete(gameKey);
-				db.delete(deckKey);
-				db.delete(defKey);
-				return;
+		onCleanup(() => {
+			if (gameState) {
+				gameState.connected = gameState?.connected.filter(id => id != playerId);
+				if (gameState.connected.length === 0) {
+					console.log("deleting game", gameId);
+					db.delete(gameKey);
+					db.delete(deckKey);
+					db.delete(defKey);
+					return;
+				}
+				handleLeave(
+					gameState,
+					playerId,
+					state => db.set(gameKey, state),
+				);
+				db.set(gameKey, gameState);
 			}
-			handleLeave(
+		});
+
+		let definition = (await db.get(defKey)).value as DeckDefinition;
+		if (!definition) {
+			const deckUrl = url.searchParams.get("deck");
+			if (!deckUrl) throw new Error("no deck url");
+	
+			definition = await fetchAndValidateDeck(deckUrl);
+			db.set(defKey, definition);
+		}
+		
+		let deckState = (await db.get(deckKey)).value as DeckState;
+		if (!deckState) {
+			const deckUrl = url.searchParams.get("deck");
+			if (!deckUrl) throw new Error("no deck url");
+	
+			deckState = initDeck(definition);
+			db.set(deckKey, deckState);
+		}
+	
+		const gameReader = new AsyncReader(db.watch([gameKey]));
+		gameReader.start(state => {
+			// console.log("update", state.value);
+			gameState = state.value as GameState;
+			if (!gameState) return;
+			sendMessage(socket, {
+				type: "state",
+				state: createStateSlice(gameState, playerId)
+			});
+		});
+		const deckReader = new AsyncReader(db.watch([deckKey]));
+		deckReader.start(state => {
+			deckState = state.value as DeckState;
+		});
+
+		onCleanup(() => {
+			gameReader.cancel();
+			deckReader.cancel();
+		});
+	
+		socket.onmessage = event => {
+			const message = JSON.parse(event.data) as ClientMessage;
+			console.log("message", message);
+			handleMessage(
+				message,
+				response => sendMessage(socket, response),
 				gameState,
+				deckState,
 				playerId,
 				state => db.set(gameKey, state),
+				state => db.set(deckKey, state),
+				gameId,
 			);
-		}
-		sub.unsubscribe();
-		db.set(gameKey, gameState);
-		socket.close();
+		};
+		
+		onWebsocketInit(socket, () => {
+			sendMessage(socket, { type: "init", id: playerId, token: playerToken, deckUrl: definition.url });
+		});
+		
+		const sub = appShutdown.subscribe(cleanup);
+		socket.onclose = cleanup;
+		
+		onCleanup(() => {
+			sub.unsubscribe();
+			socket.close();
+		});
+	} catch {
+		cleanup();
 	}
-	
-	const sub = appShutdown.subscribe(cleanup);
-	socket.onclose = cleanup;
 }
 
 function getCredentials(claimed: string | null, gameState: GameState | null): [playerId: string, token: string] {
