@@ -62,6 +62,11 @@ function nextRound(
 	const newIndex = (czarIndex + 1) % gameState.connected.length;
 	gameState.players[gameState.connected[newIndex]].status = PlayerStatus.Picking;
 
+	if (deckState.responses.length < definition.handSize * ids.length) {
+		deckState.responses = Array(definition.deck.responses).fill(0).map((_, i) => i);
+		shuffle(deckState.responses);
+	}
+
 	for (const id of ids) {
 		const player = gameState.players[id];
 		if (player.status === PlayerStatus.Disconnected
