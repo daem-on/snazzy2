@@ -1,7 +1,8 @@
-import { ClientMessage, DeckDefinition, DeckState, GameState, GameStateSlice, Player, PlayerStatus, QueuedMessage, ServerMessage } from "./dtos.ts";
+import { ClientMessage, DeckDefinition, DeckState, GameDefinition, GameState, GameStateSlice, Player, PlayerStatus, QueuedMessage, ServerMessage } from "./dtos.ts";
 import { enqueue } from "./queue.ts";
+import { Snapshot } from "./utils.ts";
 
-const handSize = 7;
+const defaultHandSize = 7;
 const roundEndDelay = 5000;
 
 export function initState(playerId: string): GameState {
@@ -22,6 +23,13 @@ export function initDeck(def: DeckDefinition): DeckState {
 	}
 }
 
+export function initDefinition(deck: DeckDefinition): GameDefinition {
+	return {
+		handSize: defaultHandSize,
+		deck,
+	};
+}
+
 // Fisher-Yates
 function shuffle(array: unknown[]): void {
 	for (let i = array.length - 1; i > 0; i--) {
@@ -31,10 +39,9 @@ function shuffle(array: unknown[]): void {
 }
 
 function nextRound(
-	gameState: GameState,
-	updateState: (state: GameState) => void,
-	deckState: DeckState,
-	updateDeck: (state: DeckState) => void,
+	{ value: gameState, update: updateState }: Snapshot<GameState>,
+	{ value: deckState, update: updateDeck }: Snapshot<DeckState>,
+	definition: GameDefinition,
 ) {
 	const ids = Object.keys(gameState.players);
 
@@ -60,7 +67,7 @@ function nextRound(
 		if (player.status === PlayerStatus.Disconnected
 			|| player.status === PlayerStatus.Picking) continue;
 		player.status = PlayerStatus.Responding;
-		dealHand(player, deckState);
+		dealHand(player, deckState, definition);
 	}
 
 	gameState.lastRoundStarted = Date.now();
@@ -69,10 +76,10 @@ function nextRound(
 	updateDeck(deckState);
 }
 
-function dealHand(player: Player, deckState: DeckState) {
+function dealHand(player: Player, deckState: DeckState, definition: GameDefinition) {
 	if (!player.hand) player.hand = [];
-	if (player.hand.length < handSize) {
-		const amount = handSize - player.hand.length;
+	if (player.hand.length < definition.handSize) {
+		const amount = definition.handSize - player.hand.length;
 		player.hand.push(...deckState.responses.splice(0, amount));
 	}
 }
@@ -88,16 +95,16 @@ function checkAndReveal(gameState: GameState) {
 export function handleMessage(
 	message: ClientMessage,
 	sendResponse: (response: ServerMessage) => void,
-	gameState: GameState,
-	deckState: DeckState,
+	gameSnapshot: Snapshot<GameState>,
+	deckSnapshot: Snapshot<DeckState>,
 	playerId: string,
-	updateState: (state: GameState) => void,
-	updateDeck: (state: DeckState) => void,
 	gameId: string,
+	definition: GameDefinition,
 ) {
+	const { value: gameState, update: updateState } = gameSnapshot;
 	switch (message.type) {
 		case "join": {
-			handleJoin(message.username, gameState, playerId, updateState);
+			handleJoin(message.username, playerId, gameSnapshot);
 			break;
 		}
 		case "start": {
@@ -107,11 +114,12 @@ export function handleMessage(
 			}
 			if (gameState.roundNumber !== 0) return;
 			if (!Object.values(gameState.players).length) return;
+			const { value: deckState, update: updateDeck } = deckSnapshot;
 			shuffle(deckState.calls);
 			shuffle(deckState.responses);
 			updateDeck(deckState);
 
-			nextRound(gameState, updateState, deckState, updateDeck);
+			nextRound(gameSnapshot, deckSnapshot, definition);
 			break;
 		}
 		case "response": {
@@ -158,15 +166,14 @@ export function handleMessage(
 
 export function handleQueuedMessage(
 	message: QueuedMessage,
-	gameState: GameState,
-	updateState: (state: GameState) => void,
-	deckState: DeckState,
-	updateDeck: (state: DeckState) => void,
+	gameSnapshot: Snapshot<GameState>,
+	deckSnapshot: Snapshot<DeckState>,
+	definition: GameDefinition,
 ) {
 	switch (message.type) {
 		case "nextRound": {
-			if ((gameState.lastRoundStarted ?? 0) > message.ifNotChangedSince) return;
-			nextRound(gameState, updateState, deckState, updateDeck);
+			if ((gameSnapshot.value.lastRoundStarted ?? 0) > message.ifNotChangedSince) return;
+			nextRound(gameSnapshot, deckSnapshot, definition);
 			break;
 		}
 	}
@@ -174,9 +181,8 @@ export function handleQueuedMessage(
 
 function handleJoin(
 	username: string,
-	gameState: GameState,
 	playerId: string,
-	updateState: (state: GameState) => void,
+	{ value: gameState, update: updateState }: Snapshot<GameState>,
 ) {
 	if (gameState.players[playerId]?.status === PlayerStatus.Disconnected) {
 		gameState.players[playerId].status = PlayerStatus.Waiting;
@@ -192,9 +198,8 @@ function handleJoin(
 }
 
 export function handleLeave(
-	gameState: GameState,
 	playerId: string,
-	updateState: (state: GameState) => void,
+	{ value: gameState, update: updateState }: Snapshot<GameState>,
 ) {
 	if (!gameState.players[playerId]) return;
 	if (gameState.players[playerId].status === PlayerStatus.Disconnected) return;

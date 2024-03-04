@@ -1,5 +1,7 @@
-import { DeckState, GameState, QueuedMessage } from "./dtos.ts";
+import { DeckState, GameDefinition, GameState, QueuedMessage } from "./dtos.ts";
 import { handleQueuedMessage } from "./gameServer.ts";
+import { getKeys } from "./keys.ts";
+import { createSnapshot } from "./utils.ts";
 
 const kv = await Deno.openKv();
 
@@ -11,17 +13,12 @@ kv.listenQueue(async m => {
 	const message = m as QueuedMessage;
 
 	console.log("dequeued", message);
-	const gameKey = ["game", message.gameId];
-	const stored = await kv.get(gameKey);
-	const gameState = stored.value as GameState | null;
-	if (!gameState) return;
-	const deckKey = ["deck", message.gameId];
-	const deckState = (await kv.get(deckKey)).value as DeckState;
+	const { gameKey, deckKey, defKey } = getKeys(message.gameId);
+	const definition = (await kv.get(defKey)).value as GameDefinition;
 	handleQueuedMessage(
 		message,
-		gameState,
-		state => kv.set(gameKey, state),
-		deckState,
-		state => kv.set(deckKey, state),
+		await createSnapshot<GameState>(kv, gameKey),
+		await createSnapshot<DeckState>(kv, deckKey),
+		definition,
 	);
 });

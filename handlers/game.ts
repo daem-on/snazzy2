@@ -1,6 +1,7 @@
 import vs from "https://deno.land/x/value_schema@v4.0.0-rc.2/mod.ts";
-import { ClientMessage, DeckDefinition, DeckState, GameState, ServerMessage } from "../dtos.ts";
-import { createStateSlice, handleLeave, handleMessage, initDeck, initState } from "../gameServer.ts";
+import { ClientMessage, DeckDefinition, DeckState, GameDefinition, GameState, ServerMessage } from "../dtos.ts";
+import { createStateSlice, handleLeave, handleMessage, initDeck, initDefinition, initState } from "../gameServer.ts";
+import { getKeys } from "../keys.ts";
 import { appShutdown } from "../main.ts";
 
 const db = await Deno.openKv();
@@ -51,9 +52,7 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 	const { cleanup, onCleanup } = createCleanup();
 
 	try {
-		const gameKey = ["game", gameId];
-		const deckKey = ["deck", gameId];
-		const defKey = ["def", gameId];
+		const { gameKey, deckKey, defKey } = getKeys(gameId);
 		
 		const claimedToken = url.searchParams.get("token");
 
@@ -80,26 +79,33 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 					return;
 				}
 				handleLeave(
-					gameState,
 					playerId,
-					state => db.set(gameKey, state),
+					{
+						value: gameState,
+						update: state => db.set(gameKey, state)
+					}
 				);
 				db.set(gameKey, gameState);
 			}
 		});
 
-		let definition = (await db.get(defKey)).value as DeckDefinition;
+		let definition = (await db.get(defKey)).value as GameDefinition;
 		if (!definition) {
 			const deckUrl = url.searchParams.get("deck");
 			if (!deckUrl) throw new Error("no deck url");
+			const deck = await fetchAndValidateDeck(deckUrl);
 	
-			definition = await fetchAndValidateDeck(deckUrl);
+			definition = initDefinition(deck);
+
+			const handSize = url.searchParams.get("handSize");
+			if (handSize) definition.handSize = parseInt(handSize);
+
 			db.set(defKey, definition);
 		}
 		
 		let deckState = (await db.get(deckKey)).value as DeckState;
 		if (!deckState) {
-			deckState = initDeck(definition);
+			deckState = initDeck(definition.deck);
 			db.set(deckKey, deckState);
 		}
 	
@@ -129,17 +135,22 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 			handleMessage(
 				message,
 				response => sendMessage(socket, response),
-				gameState,
-				deckState,
+				{
+					value: gameState,
+					update: state => db.set(gameKey, state)
+				},
+				{
+					value: deckState,
+					update: state => db.set(deckKey, state),
+				},
 				playerId,
-				state => db.set(gameKey, state),
-				state => db.set(deckKey, state),
 				gameId,
+				definition,
 			);
 		};
 		
 		onWebsocketInit(socket, () => {
-			sendMessage(socket, { type: "init", id: playerId, token: playerToken, deckUrl: definition.url });
+			sendMessage(socket, { type: "init", id: playerId, token: playerToken, deckUrl: definition.deck.url });
 		});
 		
 		const sub = appShutdown.subscribe(cleanup);

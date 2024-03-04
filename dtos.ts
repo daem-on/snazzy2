@@ -48,6 +48,11 @@ export type Player = {
 	hand?: Card[];
 };
 
+export type GameDefinition = {
+	handSize: number;
+	deck: DeckDefinition;
+}
+
 export type DeckDefinition = {
 	calls: number;
 	responses: number;
