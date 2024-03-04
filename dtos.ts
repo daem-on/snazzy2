@@ -60,7 +60,7 @@ export type DeckDefinition = {
 }
 
 export type DeckClientState = {
-	deck: DeckState;
+	deck: DeckSource;
 	definition: DeckDefinition & {
 		callLengths: number[];
 	};
