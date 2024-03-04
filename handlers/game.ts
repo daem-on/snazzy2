@@ -193,7 +193,6 @@ async function fetchAndValidateDeck(url: string): Promise<DeckDefinition> {
 	return {
 		calls: result.calls.length,
 		responses: result.responses.length,
-		callLengths: result.calls.map(c => c.length),
 		url,
 	};
 }

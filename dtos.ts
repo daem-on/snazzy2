@@ -56,8 +56,14 @@ export type GameDefinition = {
 export type DeckDefinition = {
 	calls: number;
 	responses: number;
-	callLengths: number[];
 	url: string;
+}
+
+export type DeckClientState = {
+	deck: DeckState;
+	definition: DeckDefinition & {
+		callLengths: number[];
+	};
 }
 
 export type DeckSource = {
