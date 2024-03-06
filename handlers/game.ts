@@ -7,6 +7,7 @@ import { appShutdown } from "../main.ts";
 const db = await Deno.openKv();
 
 function sendMessage(socket: WebSocket, message: ServerMessage) {
+	if (socket.readyState !== WebSocket.OPEN) return;
 	socket.send(JSON.stringify(message));
 }
 
@@ -50,6 +51,8 @@ export const gameHandler = (url: URL, socket: WebSocket, id: string): Promise<vo
 
 async function initServer(socket: WebSocket, gameId: string, url: URL) {
 	const { cleanup, onCleanup } = createCleanup();
+
+	onCleanup(() => socket.close());
 
 	try {
 		const { gameKey, deckKey, defKey } = getKeys(gameId);
@@ -156,11 +159,10 @@ async function initServer(socket: WebSocket, gameId: string, url: URL) {
 		const sub = appShutdown.subscribe(cleanup);
 		socket.onclose = cleanup;
 		
-		onCleanup(() => {
-			sub.unsubscribe();
-			socket.close();
-		});
-	} catch {
+		onCleanup(() => sub.unsubscribe());
+	} catch (e) {
+		console.error("Error in initServer:", e);
+		socket.close(1008, "An error occurred");
 		cleanup();
 	}
 }
