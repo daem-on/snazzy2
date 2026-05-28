@@ -1,4 +1,4 @@
-import vs from "https://deno.land/x/value_schema@v4.0.0-rc.2/mod.ts";
+import vs from "value_schema";
 import { ClientMessage, DeckDefinition, DeckState, GameDefinition, GameState, ServerMessage } from "../dtos.ts";
 import { createStateSlice, handleLeave, handleMessage, initDeck, initDefinition, initState } from "../gameServer.ts";
 import { getKeys } from "../keys.ts";

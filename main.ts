@@ -1,4 +1,4 @@
-import { Subject } from "https://esm.sh/rxjs@7.8.1";
+import { Subject } from "rxjs";
 import { gameHandler } from "./handlers/game.ts";
 import { resetHandler } from "./handlers/reset.ts";
 
