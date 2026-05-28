@@ -6,12 +6,10 @@ import { createSnapshot } from "./utils.ts";
 const kv = await Deno.openKv();
 
 export function enqueue(message: QueuedMessage, delay?: number) {
-	return kv.enqueue(message, { delay })
+	setTimeout(() => dequeue(message), delay);
 }
 
-kv.listenQueue(async m => {
-	const message = m as QueuedMessage;
-
+async function dequeue(message: QueuedMessage): Promise<void> {
 	console.log("dequeued", message);
 	const { gameKey, deckKey, defKey } = getKeys(message.gameId);
 	const definition = (await kv.get(defKey)).value as GameDefinition;
@@ -21,4 +19,4 @@ kv.listenQueue(async m => {
 		await createSnapshot<DeckState>(kv, deckKey),
 		definition,
 	);
-});
+}
